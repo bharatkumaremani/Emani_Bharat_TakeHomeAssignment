@@ -1,0 +1,16 @@
+module Main where
+
+template LoanRequest
+  with
+    borrower: Party
+    bank: Party
+    amount: Decimal
+  where
+    signatory borrower
+    observer bank
+
+    -- Choice for the bank to approve the loan request
+    choice ApproveRequest : ContractId Loan
+      controller bank
+      do
+        create Loan with borrower, bank, amount
