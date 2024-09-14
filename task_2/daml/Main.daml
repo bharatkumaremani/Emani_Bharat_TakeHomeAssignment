@@ -1,0 +1,28 @@
+module Main where
+
+import DA.Assert
+
+-- Token template (Account-based model)
+template Token
+  with
+    owner : Party
+    amount : Decimal
+  where
+    signatory owner
+    
+    choice Transfer : ContractId Token
+      with
+        newOwner : Party
+        transferAmount : Decimal
+      controller owner
+      do
+        assert (transferAmount > 0.0 && transferAmount <= amount)
+        if transferAmount == amount
+          then create Token with
+                 owner = newOwner
+                 amount = transferAmount
+          else do
+            create Token with
+              owner = newOwner
+              amount = transferAmount
+            create this with amount = amount - transferAmount
