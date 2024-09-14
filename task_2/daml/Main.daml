@@ -26,7 +26,8 @@ template Token
               owner = newOwner
               amount = transferAmount
             create this with amount = amount - transferAmount
-            -- LoanLimit template
+
+-- LoanLimit template
 template LoanLimit
   with
     bank : Party
@@ -43,3 +44,61 @@ template LoanLimit
       controller bank
       do
         create this with limit = newLimit
+
+-- LoanRequest template
+template LoanRequest
+  with
+    borrower : Party
+    bank : Party
+    amount : Decimal
+  where
+    signatory borrower
+    observer bank
+
+    choice Approve : ContractId Loan
+      controller bank
+      do
+        loanLimitCidOpt <- lookupByKey @LoanLimit bank
+        loanLimit <- case loanLimitCidOpt of
+          Some loanLimitCid -> fetch loanLimitCid
+          None -> abort "LoanLimit not found for the bank"
+        assert (amount <= loanLimit.limit)
+        create Loan with
+          borrower
+          bank
+          amount
+          disbursedAmount = 0.0
+
+    choice Reject : ()
+      controller bank
+      do
+        return ()
+
+-- Loan template
+template Loan
+  with
+    borrower : Party
+    bank : Party
+    amount : Decimal
+    disbursedAmount : Decimal
+  where
+    signatory borrower, bank
+
+    ensure disbursedAmount <= amount
+
+    choice Disburse : (ContractId Loan, ContractId Token)
+      with
+        disburseAmount : Decimal
+      controller bank
+      do
+        assert (disburseAmount > 0.0)
+        assert (disbursedAmount + disburseAmount <= amount)
+        
+        tokenCid <- create Token with
+          owner = borrower
+          amount = disburseAmount
+        
+        loanCid <- create this with
+          disbursedAmount = disbursedAmount + disburseAmount
+        
+        return (loanCid, tokenCid)
