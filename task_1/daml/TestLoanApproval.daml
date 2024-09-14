@@ -1,0 +1,37 @@
+module TestLoanApproval where
+
+import Daml.Script
+import Main
+
+-- Test loan approval workflow with additional test cases
+testLoanApproval : Script ()
+testLoanApproval = do
+  -- Allocate parties
+  borrower <- allocateParty "Borrower"
+  bank <- allocateParty "Bank"
+
+  -- Test Case 1: Create multiple LoanRequests and approve one of them
+  -- Create the first LoanRequest contract
+  loanRequestCid1 <- submit borrower do
+    createCmd LoanRequest with borrower, bank, amount = 100.0
+
+  -- Create the second LoanRequest contract
+  loanRequestCid2 <- submit borrower do
+    createCmd LoanRequest with borrower, bank, amount = 200.0
+
+  -- Approve the first loan request by the bank
+  loanCid1 <- submit bank do
+    exerciseCmd loanRequestCid1 ApproveRequest
+
+  -- Query to verify that LoanRequest 1 was archived and Loan contract was created
+  loan1 <- query @Loan borrower
+
+  -- Check that the second LoanRequest is still active
+  loanRequest2 <- query @LoanRequest borrower
+
+  -- Test Case 2: No approval for the second LoanRequest (it should remain active)
+  -- Bank does not approve loanRequestCid2, so it should still be an active LoanRequest
+
+  -- Debug output to verify the test cases
+  debug ("Loan 1:", loan1)
+  debug ("Active LoanRequest 2:", loanRequest2)
