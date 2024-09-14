@@ -1,0 +1,66 @@
+module TestLoanApprovalWorkflow where
+
+import Main
+import Daml.Script
+import DA.Optional
+
+testLoanApprovalWorkflow : Script ()
+testLoanApprovalWorkflow = script do
+  bank <- allocateParty "Bank"
+  borrower <- allocateParty "Borrower"
+  debug "Allocated parties: Bank and Borrower"
+
+  -- Create LoanLimit
+  loanLimitCid <- submit bank do
+    createCmd LoanLimit with
+      bank
+      limit = 1000.0
+  debug $ "Created LoanLimit with cid: " <> show loanLimitCid
+
+  -- Create LoanRequest (within limit)
+  loanRequestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      bank
+      amount = 500.0
+  debug $ "Created LoanRequest with cid: " <> show loanRequestCid
+
+  -- Approve LoanRequest
+  loanCid <- submit bank do
+    exerciseCmd loanRequestCid Approve
+  debug $ "Approved LoanRequest. Created Loan with cid: " <> show loanCid
+
+  -- Disburse tokens (full amount)
+  (finalLoanCid, tokenCid) <- submit bank do
+    exerciseCmd loanCid Disburse with disburseAmount = 500.0
+  debug $ "Disbursed full loan amount. New Loan cid: " <> show finalLoanCid
+  debug $ "Created Token with cid: " <> show tokenCid
+
+  -- Verify final loan state
+  finalLoan <- queryContractId borrower finalLoanCid
+  debug $ "Final Loan state: " <> show finalLoan
+  assert $ finalLoan == Some (Loan with borrower, bank, amount = 500.0, disbursedAmount = 500.0)
+
+  -- Verify token
+  token <- queryContractId borrower tokenCid
+  debug $ "Token state: " <> show token
+  assert $ token == Some (Token with owner = borrower, amount = 500.0)
+
+  debug "All assertions passed for the successful loan scenario"
+
+  -- Test loan request exceeding limit
+  overLimitRequestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      bank
+      amount = 1200.0
+  debug $ "Created over-limit LoanRequest with cid: " <> show overLimitRequestCid
+
+  -- Attempt to approve (should fail)
+  debug "Attempting to approve over-limit loan request (this should fail)"
+  submitMustFail bank do
+    exerciseCmd overLimitRequestCid Approve
+
+  debug "Test completed successfully!"
+
+  return ()
