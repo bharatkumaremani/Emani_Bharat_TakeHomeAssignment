@@ -26,3 +26,20 @@ template Token
               owner = newOwner
               amount = transferAmount
             create this with amount = amount - transferAmount
+            -- LoanLimit template
+template LoanLimit
+  with
+    bank : Party
+    limit : Decimal
+  where
+    signatory bank
+
+    key bank : Party
+    maintainer key
+
+    choice UpdateLimit : ContractId LoanLimit
+      with
+        newLimit : Decimal
+      controller bank
+      do
+        create this with limit = newLimit
