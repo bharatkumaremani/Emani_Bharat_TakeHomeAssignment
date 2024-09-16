@@ -1,0 +1,9 @@
+module Test where
+
+import Daml.Script
+import Main
+
+test : Script ()
+test = do
+  setup
+  return ()

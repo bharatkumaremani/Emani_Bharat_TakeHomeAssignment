@@ -1,0 +1,108 @@
+module LoanWorkflow where
+
+template RepaymentRestriction
+  with
+    bank : Party
+    minRepayment : Decimal
+    restrictedCustomer : Party  -- Rename the `customer` field to avoid ambiguity
+  where
+    signatory bank
+    observer restrictedCustomer  -- Make the restricted customer an observer
+
+template LoanLimit
+  with
+    bank : Party
+    customer : Party
+    limit : Decimal
+    utilized : Decimal
+  where
+    signatory bank
+    observer customer
+
+    key (bank, customer) : (Party, Party)
+    maintainer key._1
+
+    choice RequestLoan : ContractId Loan
+      with
+        amount : Decimal
+        tokenCid : ContractId Token
+      controller customer
+      do
+        assert (amount + utilized <= limit)
+        archive tokenCid
+        loanCid <- create Loan with
+          bank
+          customer
+          amount
+          repaid = 0.0
+        create this with
+          utilized = utilized + amount
+        return loanCid
+
+    choice UpdateUtilized : ContractId LoanLimit
+      with
+        newUtilized : Decimal
+      controller bank
+      do
+        assert (newUtilized >= 0.0)
+        create this with
+          utilized = newUtilized
+
+template Loan
+  with
+    bank : Party
+    customer : Party
+    amount : Decimal
+    repaid : Decimal
+  where
+    signatory bank, customer
+
+    choice Repay : ContractId LoanLimit
+      with
+        amount : Decimal
+        repaymentRestrictionCid : ContractId RepaymentRestriction
+      controller customer
+      do
+        repaymentRestriction <- fetch repaymentRestrictionCid
+        assert (amount >= repaymentRestriction.minRepayment)
+        assert (repaid + amount <= this.amount)
+
+        create Token with
+          issuer = bank
+          owner = bank
+          amount
+
+        (loanLimitCid, loanLimit) <- fetchByKey @LoanLimit (bank, customer)
+
+        -- Archive the old LoanLimit before creating a new one to avoid duplicate keys
+        archive loanLimitCid
+
+        if (repaid + amount == this.amount) then do
+          -- Full repayment, archive the loan
+          archive self
+          create loanLimit with
+            utilized = loanLimit.utilized - this.amount
+        else do
+          -- Partial repayment, update loan without archiving
+          create this with
+            repaid = repaid + amount
+          create loanLimit with
+            utilized = loanLimit.utilized - amount
+        return loanLimitCid
+
+template Token
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+  where
+    signatory issuer
+    observer owner
+
+    choice Transfer : ContractId Token
+      with
+        newOwner : Party
+      controller owner
+      do
+        create this with
+          owner = newOwner
